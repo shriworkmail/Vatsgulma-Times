@@ -1,0 +1,6 @@
+{
+  "name": "वत्सगुल्म टाईम्स ई-पेपर",
+  "description": "वत्सगुल्म टाईम्स (Vatsagulma Times) - वाशीम दैनिक ई-पेपर पोर्टल | आपली संस्कृती, आपला वसा !",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

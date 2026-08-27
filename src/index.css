@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-khand {
+    font-family: 'Khand', 'Noto Sans Devanagari', sans-serif;
+  }
+  .font-kokila {
+    font-family: 'Kokila', 'Tiro Devanagari Marathi', 'Noto Serif Devanagari', 'Rozha One', serif;
+  }
+  .font-marathi-masthead {
+    font-family: 'Khand', 'Rozha One', 'Tiro Devanagari Marathi', serif;
+  }
+  .font-marathi-serif {
+    font-family: 'Tiro Devanagari Marathi', serif;
+  }
+  .font-marathi-sans {
+    font-family: 'Noto Sans Devanagari', sans-serif;
+  }
+  .font-english-clean {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  .font-manrope {
+    font-family: 'Manrope', sans-serif;
+  }
+  .font-inter {
+    font-family: 'Inter', sans-serif;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .perspective-1000 {
+    perspective: 1200px;
+  }
+
+  .paper-page-shadow {
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  }
+}
+
+@keyframes pageSlideForward {
+  0% {
+    transform: translateX(45px);
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pageSlideBackward {
+  0% {
+    transform: translateX(-45px);
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-page-slide-forward {
+  animation: pageSlideForward 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.animate-page-slide-backward {
+  animation: pageSlideBackward 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee 30s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Crisp Clean Scrollbars with Navy & Dark Red accents */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #0B2240;
+}
+
+@media print {
+  body {
+    background: white;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
