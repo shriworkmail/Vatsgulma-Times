@@ -79,17 +79,35 @@ export async function initializeStorage(): Promise<Edition[]> {
       if (firestore) {
         const snapshot = await getDocs(collection(firestore, 'editions'));
         if (!snapshot.empty) {
-          snapshot.forEach((docSnap) => {
-            const cloudData = docSnap.data() as Edition;
+          for (const docSnap of snapshot.docs) {
+            const cloudData = docSnap.data() as any;
             const key = cloudData.id || cloudData.date;
             const existingLocal = mergedMap.get(key);
-            // Preserve local high-res pdfDataUrl if cloud document stripped it for size
-            if (existingLocal?.pdfDataUrl && !cloudData.pdfDataUrl) {
-              mergedMap.set(key, { ...cloudData, pdfDataUrl: existingLocal.pdfDataUrl });
-            } else {
-              mergedMap.set(key, cloudData);
+
+            let assembledPdf = existingLocal?.pdfDataUrl || cloudData.pdfDataUrl;
+
+            // If PDF was chunked and not available locally, fetch chunks from subcollection
+            if (!assembledPdf && cloudData.hasPdfChunks && cloudData.totalPdfChunks > 0) {
+              try {
+                const chunksSnap = await getDocs(collection(firestore, `editions/${cloudData.id}/pdfChunks`));
+                if (!chunksSnap.empty) {
+                  const chunksList: { index: number; chunk: string }[] = [];
+                  chunksSnap.forEach((cDoc) => chunksList.push(cDoc.data() as any));
+                  chunksList.sort((a, b) => a.index - b.index);
+                  assembledPdf = chunksList.map((c) => c.chunk).join('');
+                }
+              } catch (chunkErr) {
+                console.warn(`Error loading chunks for ${cloudData.id}:`, chunkErr);
+              }
             }
-          });
+
+            const mergedEdition: Edition = {
+              ...cloudData,
+              pdfDataUrl: assembledPdf || cloudData.pdfDataUrl || existingLocal?.pdfDataUrl,
+            };
+
+            mergedMap.set(key, mergedEdition);
+          }
         }
       }
     } catch (firestoreErr) {
@@ -178,23 +196,43 @@ export async function saveEdition(edition: Edition): Promise<void> {
     }
   }
 
-  // 2. Save to Firestore Cloud Database (ensures papers are visible on Netlify deployment)
+  // 2. Save to Firestore Cloud Database with Chunking Support
   try {
     const firestore = getFirestoreInstance();
     if (firestore) {
-      // Create lightweight copy to respect Firestore document size limits if PDF is huge
-      const isDataUrlHuge = edition.pdfDataUrl && edition.pdfDataUrl.length > 700000;
+      const CHUNK_SIZE = 700000; // ~700KB per chunk safe for 1MB Firestore doc limit
+      const rawPdf = edition.pdfDataUrl || '';
+      
+      let chunksCount = 0;
+      if (rawPdf && rawPdf.length > 0) {
+        chunksCount = Math.ceil(rawPdf.length / CHUNK_SIZE);
+        // Write chunks to subcollection
+        for (let i = 0; i < chunksCount; i++) {
+          const chunkData = rawPdf.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+          await setDoc(
+            doc(firestore, `editions/${edition.id}/pdfChunks`, `chunk_${i}`),
+            { index: i, chunk: chunkData }
+          );
+        }
+      }
+
+      // Metadata doc in editions collection
       const firestoreDocData: Edition = {
         ...edition,
-        pdfDataUrl: isDataUrlHuge ? undefined : edition.pdfDataUrl,
+        pdfDataUrl: chunksCount <= 1 && rawPdf.length < CHUNK_SIZE ? rawPdf : undefined,
         pages: edition.pages?.map((p) => ({
           pageNumber: p.pageNumber,
           title: p.title || `पान ${p.pageNumber}`,
           thumbnailUrl: p.thumbnailUrl,
-          fullPageUrl: p.fullPageUrl && p.fullPageUrl.length > 500000 ? undefined : p.fullPageUrl,
+          fullPageUrl: p.fullPageUrl && p.fullPageUrl.length > 400000 ? undefined : p.fullPageUrl,
         })),
       };
-      await setDoc(doc(firestore, 'editions', edition.id), firestoreDocData, { merge: true });
+      
+      await setDoc(doc(firestore, 'editions', edition.id), {
+        ...firestoreDocData,
+        hasPdfChunks: chunksCount > 1,
+        totalPdfChunks: chunksCount,
+      }, { merge: true });
     }
   } catch (firestoreErr) {
     console.warn('Firestore cloud save note:', firestoreErr);
@@ -302,10 +340,16 @@ export async function deleteEdition(id: string): Promise<void> {
     }
   }
 
-  // 2. Delete from Firestore Cloud Database
+  // 2. Delete from Firestore Cloud Database (metadata and any subcollection chunks)
   try {
     const firestore = getFirestoreInstance();
     if (firestore) {
+      try {
+        const chunksSnap = await getDocs(collection(firestore, `editions/${id}/pdfChunks`));
+        for (const cDoc of chunksSnap.docs) {
+          await deleteDoc(cDoc.ref);
+        }
+      } catch (chunkDelErr) {}
       await deleteDoc(doc(firestore, 'editions', id));
     }
   } catch (firestoreDelErr) {

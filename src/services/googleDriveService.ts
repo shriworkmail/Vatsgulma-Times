@@ -5,7 +5,6 @@ import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/
 
 const DRIVE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/drive.readonly',
 ];
 
 const DRIVE_FOLDER_NAME = 'Vatsagulma Times E-Paper Archive';
