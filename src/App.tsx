@@ -90,6 +90,18 @@ export default function App() {
     loadEditions();
     setIsAdminLoggedIn(checkIsAdminLoggedIn());
 
+    // Check URL hash / query parameters for #admin or ?admin=true
+    const checkAdminRoute = () => {
+      const hash = window.location.hash.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      if (hash === '#admin' || hash === '#/admin' || params.get('admin') === 'true') {
+        setViewMode('admin');
+      }
+    };
+
+    checkAdminRoute();
+    window.addEventListener('hashchange', checkAdminRoute);
+
     // Adjust sidebar on window resize
     const handleResize = () => {
       if (window.innerWidth < 768) {
@@ -99,12 +111,22 @@ export default function App() {
       }
     };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('hashchange', checkAdminRoute);
+    };
   }, [loadEditions]);
 
-  // Keyboard navigation shortcuts for high-craft developer UX
+  // Keyboard navigation shortcuts for reader and stealth admin access (Ctrl+Shift+A or Alt+A)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Secret Admin Access shortcut: Ctrl + Shift + A OR Alt + A
+      if ((e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) || (e.altKey && (e.key === 'A' || e.key === 'a'))) {
+        e.preventDefault();
+        setViewMode((prev) => (prev === 'admin' ? 'reader' : 'admin'));
+        return;
+      }
+
       // Don't trigger shortcuts if typing inside inputs/textareas
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
         return;
@@ -246,6 +268,9 @@ export default function App() {
         onBackToReader={() => {
           loadHeaderSettings();
           setViewMode('reader');
+          if (window.location.hash === '#admin' || window.location.hash === '#/admin') {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          }
         }}
         isAdminLoggedIn={isAdminLoggedIn}
         setIsAdminLoggedIn={setIsAdminLoggedIn}
