@@ -14,6 +14,7 @@ const ACCESS_TOKEN_KEY = 'vatsagulma_drive_token';
 const DRIVE_USER_KEY = 'vatsagulma_drive_user';
 const DRIVE_FOLDER_KEY = 'vatsagulma_drive_folder_id';
 const LAST_SYNC_KEY = 'vatsagulma_drive_last_sync';
+const CUSTOM_CLIENT_ID_KEY = 'vatsagulma_custom_google_client_id';
 
 // Global cached state
 let cachedToken: string | null = localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -24,6 +25,28 @@ try {
 } catch (e) {}
 
 let cachedFolderId: string | null = localStorage.getItem(DRIVE_FOLDER_KEY);
+
+/**
+ * Get configured OAuth Client ID (custom or default)
+ */
+export function getConfiguredOAuthClientId(): string {
+  const custom = localStorage.getItem(CUSTOM_CLIENT_ID_KEY);
+  if (custom && custom.trim().length > 0) {
+    return custom.trim();
+  }
+  return firebaseConfig.oAuthClientId || '194123986820-lof1f7aeoiie08sql5c13emlthb122q5.apps.googleusercontent.com';
+}
+
+/**
+ * Save custom OAuth Client ID
+ */
+export function setCustomOAuthClientId(clientId: string): void {
+  if (clientId && clientId.trim().length > 0) {
+    localStorage.setItem(CUSTOM_CLIENT_ID_KEY, clientId.trim());
+  } else {
+    localStorage.removeItem(CUSTOM_CLIENT_ID_KEY);
+  }
+}
 
 // Initialize Firebase App for Auth fallback
 function getFirebaseAppInstance() {
@@ -134,24 +157,43 @@ async function fetchGoogleUserInfo(token: string): Promise<GoogleDriveUser> {
  * Connect to Google Drive using Google Identity Services (GIS) or Firebase Auth
  */
 export async function connectGoogleDrive(): Promise<GoogleDriveStatus> {
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const clientId = getConfiguredOAuthClientId();
+
   // Method 1: Try Google Identity Services (GSI) Token Client
   if (typeof window !== 'undefined' && (window as any).google?.accounts?.oauth2) {
     try {
       const token = await new Promise<string>((resolve, reject) => {
-        const client = (window as any).google.accounts.oauth2.initTokenClient({
-          client_id: firebaseConfig.oAuthClientId || '194123986820-lof1f7aeoiie08sql5c13emlthb122q5.apps.googleusercontent.com',
-          scope: DRIVE_SCOPES.join(' '),
-          callback: (response: any) => {
-            if (response.error) {
-              reject(new Error(response.error_description || response.error));
-            } else if (response.access_token) {
-              resolve(response.access_token);
-            } else {
-              reject(new Error('No access token received from Google Identity Services'));
-            }
-          },
-        });
-        client.requestAccessToken({ prompt: 'consent' });
+        try {
+          const client = (window as any).google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: DRIVE_SCOPES.join(' '),
+            error_callback: (error: any) => {
+              const errStr = JSON.stringify(error || '');
+              if (errStr.includes('origin_mismatch') || errStr.includes('400')) {
+                reject(new Error(`Google OAuth Origin Error (400: origin_mismatch): The domain "${currentOrigin}" is not registered in Google Cloud Console OAuth Client ID Authorized JavaScript Origins.`));
+              } else {
+                reject(new Error(error?.message || error?.type || 'Google Identity error'));
+              }
+            },
+            callback: (response: any) => {
+              if (response.error) {
+                if (response.error === 'origin_mismatch' || response.error_description?.includes('origin_mismatch')) {
+                  reject(new Error(`Google OAuth Origin Error (400: origin_mismatch): The domain "${currentOrigin}" is not registered in Authorized JavaScript Origins.`));
+                } else {
+                  reject(new Error(response.error_description || response.error));
+                }
+              } else if (response.access_token) {
+                resolve(response.access_token);
+              } else {
+                reject(new Error('No access token received from Google Identity Services'));
+              }
+            },
+          });
+          client.requestAccessToken({ prompt: 'consent' });
+        } catch (initErr: any) {
+          reject(initErr);
+        }
       });
 
       const user = await fetchGoogleUserInfo(token);
@@ -167,8 +209,11 @@ export async function connectGoogleDrive(): Promise<GoogleDriveStatus> {
       }
 
       return getGoogleDriveStatus();
-    } catch (gsiErr) {
+    } catch (gsiErr: any) {
       console.warn('GSI token client error, attempting Firebase Auth fallback:', gsiErr);
+      if (gsiErr.message?.includes('origin_mismatch')) {
+        throw gsiErr;
+      }
     }
   }
 
@@ -184,7 +229,7 @@ export async function connectGoogleDrive(): Promise<GoogleDriveStatus> {
     const token = credential?.accessToken;
 
     if (!token) {
-      throw new Error('Google Drive Access Token प्राप्त होऊ शकले नाही.');
+      throw new Error('Google Drive Access Token could not be retrieved from Google login.');
     }
 
     const user: GoogleDriveUser = {
@@ -207,7 +252,10 @@ export async function connectGoogleDrive(): Promise<GoogleDriveStatus> {
     return getGoogleDriveStatus();
   } catch (err: any) {
     console.error('Failed to connect Google Drive:', err);
-    throw new Error(err.message || 'Google Drive कनेक्ट करण्यात त्रुटी आली.');
+    if (err.code === 'auth/unauthorized-domain') {
+      throw new Error(`Firebase Auth Domain Error: "${currentOrigin}" is not added to Authorized Domains in Firebase Console.`);
+    }
+    throw new Error(err.message || 'Google Drive connection error.');
   }
 }
 

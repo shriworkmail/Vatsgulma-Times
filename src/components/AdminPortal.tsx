@@ -48,7 +48,9 @@ import {
   uploadPdfToGoogleDrive, 
   syncAllEditionsToDrive, 
   loadMasterIndexFromDrive, 
-  isGoogleDriveConnected 
+  isGoogleDriveConnected,
+  getConfiguredOAuthClientId,
+  setCustomOAuthClientId
 } from '../services/googleDriveService';
 import { InteractiveSectionEditor } from './InteractiveSectionEditor';
 import { AdminEditionReader } from './AdminEditionReader';
@@ -128,6 +130,10 @@ export function AdminPortal({
   const [settingExecEditor, setSettingExecEditor] = useState('स्वप्नील रोकडे');
   const [settingContactEmail, setSettingContactEmail] = useState('shri.workmail@gmail.com');
   const [settingBannerImage, setSettingBannerImage] = useState<string | null>(null);
+
+  // Google OAuth Config State
+  const [customClientIdInput, setCustomClientIdInput] = useState<string>(() => getConfiguredOAuthClientId());
+  const [copiedOrigin, setCopiedOrigin] = useState<boolean>(false);
 
   useEffect(() => {
     setDriveStatus(getGoogleDriveStatus());
@@ -1798,6 +1804,17 @@ export function AdminPortal({
           {activeTab === 'drive' && (
             <div className="max-w-4xl mx-auto space-y-5 font-inter">
               
+              {/* Important Announcement: Cloud Database is active & independent */}
+              <div className="bg-blue-50 border-2 border-blue-200 p-4 flex items-start gap-3">
+                <Info className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
+                <div className="text-xs text-blue-950 space-y-1">
+                  <span className="font-bold block text-sm">सर्व ई-पेपर थेट लाईव्ह होतात (Live Cloud Database Active)</span>
+                  <p>
+                    तुम्ही अपलोड केलेले सर्व वर्तमानपत्र पीडीएफ थेट क्लाउड डेटाबेस (Firestore) वर साठवले जातात आणि वाचकांसाठी <strong>ताबडतोब लाईव्ह उपलब्ध होतात</strong>. Google Drive जोडणे ही केवळ अतिरिक्त बॅकअप सुविधा आहे, वृत्तपत्र लाईव्ह होण्यासाठी Drive आवश्यक नाही.
+                  </p>
+                </div>
+              </div>
+
               <div className="border-2 border-slate-300 bg-white p-5 shadow-xs">
                 <div className="border-b-2 border-slate-200 pb-3 mb-4">
                   <h2 className="font-manrope text-xl font-semibold text-slate-900 flex items-center gap-2">
@@ -1805,7 +1822,7 @@ export function AdminPortal({
                     <span>Google Drive Integration</span>
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Connect your Google Drive account to create automatic cloud backups and sync across devices.
+                    Connect your Google Drive account to create automated Google Drive backups in your personal Drive folder.
                   </p>
                 </div>
 
@@ -1845,7 +1862,7 @@ export function AdminPortal({
                           className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold border-2 border-emerald-950 text-xs flex items-center gap-2 cursor-pointer"
                         >
                           {isDriveConnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
-                          <span>Connect Drive</span>
+                          <span>Connect Google Drive</span>
                         </button>
                       ) : (
                         <button
@@ -1855,6 +1872,73 @@ export function AdminPortal({
                           Disconnect
                         </button>
                       )}
+                    </div>
+                  </div>
+
+                  {/* Domain Registration & OAuth Origin Help */}
+                  <div className="border-2 border-slate-200 p-4 bg-slate-50 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                        <Shield className="w-4 h-4 text-blue-700" />
+                        <span>Google OAuth Domain Registration (Error 400: origin_mismatch निराकरण)</span>
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Google OAuth सुरक्षा धोरणानुसार, तुमच्या सध्याच्या वेबसाइटचे डोमेन (Origin URL) Google Cloud Console मधील <strong>Authorized JavaScript Origins</strong> मध्ये नोंदवलेले असणे आवश्यक आहे.
+                    </p>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-700 uppercase">
+                        तुमचा सध्याचा Origin URL (Copy & Add in Google Cloud Console):
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={typeof window !== 'undefined' ? window.location.origin : ''}
+                          className="w-full px-3 py-2 text-xs font-mono bg-white border-2 border-slate-300 select-all text-slate-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== 'undefined') {
+                              navigator.clipboard.writeText(window.location.origin);
+                              setCopiedOrigin(true);
+                              setTimeout(() => setCopiedOrigin(false), 2500);
+                            }
+                          }}
+                          className="px-3 py-2 bg-[#0B2240] hover:bg-blue-900 text-white font-semibold text-xs border border-blue-950 shrink-0 cursor-pointer flex items-center gap-1"
+                        >
+                          {copiedOrigin ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : null}
+                          <span>{copiedOrigin ? 'Copied!' : 'Copy Origin'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 space-y-2 border-t border-slate-200">
+                      <label className="text-[11px] font-bold text-slate-700 uppercase block">
+                        Custom Google Cloud OAuth Client ID (Optional):
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. 123456789-abcdef.apps.googleusercontent.com"
+                          value={customClientIdInput}
+                          onChange={(e) => setCustomClientIdInput(e.target.value)}
+                          className="w-full px-3 py-2 text-xs font-mono bg-white border-2 border-slate-300 text-slate-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomOAuthClientId(customClientIdInput);
+                            showNotification('success', 'Custom OAuth Client ID saved.');
+                          }}
+                          className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs border border-emerald-950 shrink-0 cursor-pointer"
+                        >
+                          Save Client ID
+                        </button>
+                      </div>
                     </div>
                   </div>
 
