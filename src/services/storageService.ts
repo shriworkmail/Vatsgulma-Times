@@ -3,13 +3,35 @@ import {
   loadMasterIndexFromDrive, 
   saveMasterIndexToDrive, 
   deleteFileFromGoogleDrive, 
+  deleteEditionFilesFromGoogleDrive,
   isGoogleDriveConnected 
 } from './googleDriveService';
+import firebaseConfig from '../../firebase-applet-config.json';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  getDocs, 
+  setDoc, 
+  deleteDoc 
+} from 'firebase/firestore';
 
 const DB_NAME = 'VatsagulmaLiveEPaperDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'editions';
 const AUTH_KEY = 'vatsagulma_epaper_admin_auth';
+
+// Initialize Firebase App & Firestore for cloud persistence (available on Netlify & all devices)
+function getFirestoreInstance() {
+  try {
+    const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+    return getFirestore(app);
+  } catch (err) {
+    console.warn('Firestore initialization warning:', err);
+    return null;
+  }
+}
 
 // Helper to open IndexedDB
 function openDB(): Promise<IDBDatabase> {
@@ -32,11 +54,12 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 /**
- * Initialize storage: load from IndexedDB and sync with Google Drive cloud archive
+ * Initialize storage: load from IndexedDB and sync with Firestore cloud database and Google Drive archive
+ * Guarantees papers appear on Netlify and across all visitor devices
  */
 export async function initializeStorage(): Promise<Edition[]> {
   try {
-    // Clear legacy database if needed to remove old mock entries
+    // Clear legacy database if needed
     if (window.indexedDB && indexedDB.deleteDatabase) {
       try {
         indexedDB.deleteDatabase('WashimEPaperDB');
@@ -47,38 +70,58 @@ export async function initializeStorage(): Promise<Edition[]> {
     const db = await openDB();
     const localEditions = await getAllEditionsFromDB(db);
 
-    // If Google Drive is connected, check for cloud master index
+    const mergedMap = new Map<string, Edition>();
+    localEditions.forEach((e) => mergedMap.set(e.id || e.date, e));
+
+    // 1. Fetch from Firestore Cloud Database (for Netlify readers everywhere)
+    try {
+      const firestore = getFirestoreInstance();
+      if (firestore) {
+        const snapshot = await getDocs(collection(firestore, 'editions'));
+        if (!snapshot.empty) {
+          snapshot.forEach((docSnap) => {
+            const cloudData = docSnap.data() as Edition;
+            const key = cloudData.id || cloudData.date;
+            const existingLocal = mergedMap.get(key);
+            // Preserve local high-res pdfDataUrl if cloud document stripped it for size
+            if (existingLocal?.pdfDataUrl && !cloudData.pdfDataUrl) {
+              mergedMap.set(key, { ...cloudData, pdfDataUrl: existingLocal.pdfDataUrl });
+            } else {
+              mergedMap.set(key, cloudData);
+            }
+          });
+        }
+      }
+    } catch (firestoreErr) {
+      console.warn('Firestore cloud fetch note:', firestoreErr);
+    }
+
+    // 2. If Google Drive is connected, sync with Drive master catalog
     if (isGoogleDriveConnected()) {
       try {
         const driveEditions = await loadMasterIndexFromDrive();
         if (driveEditions && driveEditions.length > 0) {
-          // Merge local and drive editions
-          const map = new Map<string, Edition>();
-          driveEditions.forEach((e) => map.set(e.id || e.date, e));
-          localEditions.forEach((e) => {
+          driveEditions.forEach((e) => {
             const key = e.id || e.date;
-            if (!map.has(key) || (!map.get(key)!.pdfDataUrl && e.pdfDataUrl)) {
-              map.set(key, { ...map.get(key), ...e });
+            const existing = mergedMap.get(key);
+            if (!existing || (!existing.pdfDataUrl && e.pdfDataUrl)) {
+              mergedMap.set(key, { ...existing, ...e });
             }
           });
-
-          const merged = Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
-          // Save merged back to IndexedDB
-          for (const item of merged) {
-            await saveEditionToDB(db, item);
-          }
-          return merged;
         }
       } catch (driveErr) {
         console.warn('Google Drive init sync note:', driveErr);
       }
     }
-    
-    if (localEditions && localEditions.length > 0) {
-      return localEditions.sort((a, b) => b.date.localeCompare(a.date));
+
+    const finalEditions = Array.from(mergedMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+
+    // Cache merged editions into local IndexedDB
+    for (const item of finalEditions) {
+      await saveEditionToDB(db, item).catch(() => {});
     }
 
-    return [];
+    return finalEditions;
   } catch (err) {
     console.warn('Falling back to local storage:', err);
     const local = localStorage.getItem('vatsagulma_epaper_editions');
@@ -112,9 +155,10 @@ function saveEditionToDB(db: IDBDatabase, edition: Edition): Promise<void> {
 }
 
 /**
- * Save or update an edition in archive database and auto-sync to Google Drive
+ * Save or update an edition in IndexedDB, Firestore cloud database, and Google Drive
  */
 export async function saveEdition(edition: Edition): Promise<void> {
+  // 1. Save to local IndexedDB
   try {
     const db = await openDB();
     await saveEditionToDB(db, edition);
@@ -123,7 +167,6 @@ export async function saveEdition(edition: Edition): Promise<void> {
     try {
       const all = await getSavedEditions();
       const filtered = all.filter((item) => item.id !== edition.id);
-      // Strip heavy base64 pdfDataUrl for localStorage to avoid QuotaExceededError
       const lightweightEdition: Edition = {
         ...edition,
         pdfDataUrl: edition.isStoredOnDrive ? undefined : edition.pdfDataUrl?.slice(0, 1000),
@@ -131,11 +174,33 @@ export async function saveEdition(edition: Edition): Promise<void> {
       filtered.unshift(lightweightEdition);
       localStorage.setItem('vatsagulma_epaper_editions', JSON.stringify(filtered));
     } catch (localErr) {
-      console.warn('localStorage fallback failed (quota limit):', localErr);
+      console.warn('localStorage fallback failed:', localErr);
     }
   }
 
-  // Auto-sync master index to Google Drive if connected
+  // 2. Save to Firestore Cloud Database (ensures papers are visible on Netlify deployment)
+  try {
+    const firestore = getFirestoreInstance();
+    if (firestore) {
+      // Create lightweight copy to respect Firestore document size limits if PDF is huge
+      const isDataUrlHuge = edition.pdfDataUrl && edition.pdfDataUrl.length > 700000;
+      const firestoreDocData: Edition = {
+        ...edition,
+        pdfDataUrl: isDataUrlHuge ? undefined : edition.pdfDataUrl,
+        pages: edition.pages?.map((p) => ({
+          pageNumber: p.pageNumber,
+          title: p.title || `पान ${p.pageNumber}`,
+          thumbnailUrl: p.thumbnailUrl,
+          fullPageUrl: p.fullPageUrl && p.fullPageUrl.length > 500000 ? undefined : p.fullPageUrl,
+        })),
+      };
+      await setDoc(doc(firestore, 'editions', edition.id), firestoreDocData, { merge: true });
+    }
+  } catch (firestoreErr) {
+    console.warn('Firestore cloud save note:', firestoreErr);
+  }
+
+  // 3. Auto-sync master index to Google Drive if connected
   if (isGoogleDriveConnected()) {
     try {
       const allEditions = await getSavedEditions();
@@ -165,8 +230,15 @@ export async function saveEditionSections(editionId: string, sections: NewsSecti
         }
         existing.sections = sections;
         const putReq = store.put(existing);
-        putReq.onsuccess = () => {
-          // Asynchronously update Drive master index without blocking
+        putReq.onsuccess = async () => {
+          // Asynchronously update Firestore and Drive without blocking
+          try {
+            const firestore = getFirestoreInstance();
+            if (firestore) {
+              await setDoc(doc(firestore, 'editions', editionId), { sections }, { merge: true });
+            }
+          } catch (e) {}
+
           if (isGoogleDriveConnected()) {
             getAllEditionsFromDB(db)
               .then((all) => saveMasterIndexToDrive(all))
@@ -215,16 +287,32 @@ export async function getSavedEditions(): Promise<Edition[]> {
 }
 
 /**
- * Delete an edition from archive database and Google Drive (with safety)
+ * Delete an edition completely from IndexedDB, Firestore cloud database, and Google Drive folder
  */
 export async function deleteEdition(id: string): Promise<void> {
   const all = await getSavedEditions();
   const target = all.find((item) => item.id === id);
 
-  if (target?.driveFileId && isGoogleDriveConnected()) {
-    await deleteFileFromGoogleDrive(target.driveFileId);
+  // 1. Delete from Google Drive folder (files + master index)
+  if (target && isGoogleDriveConnected()) {
+    try {
+      await deleteEditionFilesFromGoogleDrive(target.date, target.driveFileId, target.pdfFileName);
+    } catch (driveDelErr) {
+      console.warn('Google Drive file deletion warning:', driveDelErr);
+    }
   }
 
+  // 2. Delete from Firestore Cloud Database
+  try {
+    const firestore = getFirestoreInstance();
+    if (firestore) {
+      await deleteDoc(doc(firestore, 'editions', id));
+    }
+  } catch (firestoreDelErr) {
+    console.warn('Firestore cloud delete note:', firestoreDelErr);
+  }
+
+  // 3. Delete from local IndexedDB
   try {
     const db = await openDB();
     await new Promise<void>((resolve, reject) => {
@@ -239,7 +327,7 @@ export async function deleteEdition(id: string): Promise<void> {
     localStorage.setItem('vatsagulma_epaper_editions', JSON.stringify(filtered));
   }
 
-  // Update master index on Google Drive
+  // 4. Update master index on Google Drive
   if (isGoogleDriveConnected()) {
     try {
       const remaining = all.filter((item) => item.id !== id);
@@ -292,4 +380,5 @@ export async function clearAllStorage(): Promise<void> {
   }
   localStorage.removeItem('vatsagulma_epaper_editions');
 }
+
 

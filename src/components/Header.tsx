@@ -32,11 +32,11 @@ export function Header({
           </p>
         </div>
 
-        {/* Center/Right Info: Location & Title Code (2 lines) and Editors (2 lines) */}
-        <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 sm:gap-6 text-xs sm:text-sm font-marathi-sans text-slate-800">
+        {/* Center/Right Info: Location & Title Code (2 lines), Subtle Admin Login, and Editors (2 lines) */}
+        <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 sm:gap-5 text-xs sm:text-sm font-marathi-sans text-slate-800">
           
           {/* Column 1: Location & Title Code in 2 lines */}
-          <div className="flex flex-col items-center md:items-start space-y-0.5 border-l-0 md:border-l-2 md:border-slate-200 md:pl-4">
+          <div className="flex flex-col items-center md:items-start space-y-0.5 border-l-0 md:border-l-2 md:border-slate-200 md:pl-3.5">
             <span className="font-bold text-slate-900 flex items-center gap-1 text-[11px] sm:text-xs">
               <span>📍</span> {location}
             </span>
@@ -45,8 +45,21 @@ export function Header({
             </span>
           </div>
 
+          {/* Discreet Faded Gray Admin Sign-in Button Between Title Code and Editors */}
+          <div className="flex items-center justify-center">
+            <button
+              onClick={onOpenAdmin}
+              id="discreet-admin-signin-btn"
+              className="text-slate-400 hover:text-slate-700 opacity-40 hover:opacity-100 transition-all text-[9px] sm:text-[10px] font-sans tracking-tight cursor-pointer select-none px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 hover:bg-slate-100 flex items-center gap-0.5"
+              title="Admin Portal"
+            >
+              <span className="text-[8px] opacity-70">🔒</span>
+              <span className="font-english-clean font-medium">Admin</span>
+            </button>
+          </div>
+
           {/* Column 2: Chief Editor & Executive Editor in 2 lines */}
-          <div className="flex flex-col items-center md:items-start space-y-0.5 border-l-0 md:border-l-2 md:border-slate-200 md:pl-4 text-[11px] sm:text-xs">
+          <div className="flex flex-col items-center md:items-start space-y-0.5 border-l-0 md:border-l-2 md:border-slate-200 md:pl-3.5 text-[11px] sm:text-xs">
             <span className="text-slate-800">
               <strong className="text-[#0B2240] font-bold">मुख्य संपादक:</strong> {chiefEditor}
             </span>

@@ -610,7 +610,7 @@ export async function syncAllEditionsToDrive(
 }
 
 /**
- * Delete a file from Google Drive (with explicit confirmation safety)
+ * Delete a file from Google Drive by File ID
  */
 export async function deleteFileFromGoogleDrive(fileId: string): Promise<boolean> {
   const token = getGoogleDriveAccessToken();
@@ -626,6 +626,65 @@ export async function deleteFileFromGoogleDrive(fileId: string): Promise<boolean
     console.error('Error deleting file from Google Drive:', err);
     return false;
   }
+}
+
+/**
+ * Delete all files for an edition from Google Drive folder and update master index
+ */
+export async function deleteEditionFilesFromGoogleDrive(
+  editionDate: string,
+  fileId?: string,
+  fileName?: string
+): Promise<boolean> {
+  const token = getGoogleDriveAccessToken();
+  if (!token) return false;
+
+  let anyDeleted = false;
+
+  // 1. Delete by direct file ID if provided
+  if (fileId) {
+    const success = await deleteFileFromGoogleDrive(fileId);
+    if (success) anyDeleted = true;
+  }
+
+  // 2. Search Drive folder for any matching PDF files for this edition date
+  try {
+    const folderId = await getOrCreateEpaperFolder(token);
+    const dateQuery = `'${folderId}' in parents and trashed = false and (name contains '${editionDate}' or name contains '${fileName || ''}')`;
+    const searchRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(dateQuery)}&fields=files(id,name)`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    if (searchRes.ok) {
+      const searchData = await searchRes.json();
+      if (searchData.files && Array.isArray(searchData.files)) {
+        for (const f of searchData.files) {
+          if (f.name !== INDEX_FILE_NAME) {
+            await deleteFileFromGoogleDrive(f.id);
+            anyDeleted = true;
+          }
+        }
+      }
+    }
+  } catch (searchErr) {
+    console.warn('Drive folder search during deletion note:', searchErr);
+  }
+
+  // 3. Update master index on Drive to remove this edition
+  try {
+    const currentEditions = await loadMasterIndexFromDrive();
+    if (currentEditions && currentEditions.length > 0) {
+      const remaining = currentEditions.filter((e) => e.date !== editionDate && e.driveFileId !== fileId);
+      await saveMasterIndexToDrive(remaining);
+    }
+  } catch (indexErr) {
+    console.warn('Drive index update during deletion note:', indexErr);
+  }
+
+  return anyDeleted;
 }
 
 /**

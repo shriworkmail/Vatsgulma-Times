@@ -16,6 +16,10 @@ interface DateFilterBarProps {
   onToggleSidebar: () => void;
   isSidebarOpen: boolean;
   onToggleFullscreen?: () => void;
+  onPrevEdition?: () => void;
+  onNextEdition?: () => void;
+  hasPrevEdition?: boolean;
+  hasNextEdition?: boolean;
 }
 
 export function DateFilterBar({
@@ -27,6 +31,10 @@ export function DateFilterBar({
   onToggleSidebar,
   isSidebarOpen,
   onToggleFullscreen,
+  onPrevEdition,
+  onNextEdition,
+  hasPrevEdition = false,
+  hasNextEdition = false,
 }: DateFilterBarProps) {
   const handleShareWhatsApp = () => {
     const text = encodeURIComponent(
@@ -39,7 +47,7 @@ export function DateFilterBar({
     <div id="epaper-date-filter" className="bg-white border-b border-slate-200 px-2 sm:px-4 py-1.5 text-slate-900 shadow-2xs select-none font-marathi-sans shrink-0">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-1.5 sm:gap-3">
         
-        {/* Left Side: Sidebar Toggle & Date Picker */}
+        {/* Left Side: Sidebar Toggle & Date Picker with Paper Change Arrows */}
         <div className="flex items-center gap-1.5 sm:gap-2">
           
           {/* Toggle Sidebar Pages Button */}
@@ -58,17 +66,46 @@ export function DateFilterBar({
             <span className="text-[11px] opacity-90">({totalPages})</span>
           </button>
 
-          {/* Date Picker Input */}
-          <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-50 border border-slate-300 rounded px-2 py-1 shadow-2xs">
-            <CalendarIcon className="w-3.5 h-3.5 text-[#8B0000] shrink-0" />
-            <span className="text-xs font-bold text-slate-700 hidden sm:inline">दिनांक:</span>
-            <input
-              type="date"
-              id="epaper-date-picker-input"
-              value={selectedDate}
-              onChange={(e) => onDateChange(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-900 focus:outline-hidden cursor-pointer w-[110px] sm:w-auto"
-            />
+          {/* Paper / Edition Change Controls with Date Picker */}
+          <div className="flex items-center bg-slate-50 border border-slate-300 rounded shadow-2xs p-0.5">
+            {/* Previous Paper / Older Edition Button */}
+            {onPrevEdition && (
+              <button
+                onClick={onPrevEdition}
+                disabled={!hasPrevEdition}
+                id="prev-paper-btn"
+                className="p-1 text-slate-700 hover:text-white hover:bg-[#8B0000] rounded disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-colors cursor-pointer"
+                title="मागील अंक (Previous Paper)"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* Date Input */}
+            <div className="flex items-center gap-1 sm:gap-1.5 px-1.5 py-0.5">
+              <CalendarIcon className="w-3.5 h-3.5 text-[#8B0000] shrink-0" />
+              <span className="text-xs font-bold text-slate-700 hidden sm:inline">दिनांक:</span>
+              <input
+                type="date"
+                id="epaper-date-picker-input"
+                value={selectedDate}
+                onChange={(e) => onDateChange(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-900 focus:outline-hidden cursor-pointer w-[110px] sm:w-auto"
+              />
+            </div>
+
+            {/* Next Paper / Newer Edition Button */}
+            {onNextEdition && (
+              <button
+                onClick={onNextEdition}
+                disabled={!hasNextEdition}
+                id="next-paper-btn"
+                className="p-1 text-slate-700 hover:text-white hover:bg-[#8B0000] rounded disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-colors cursor-pointer"
+                title="पुढील अंक (Next Paper)"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
         </div>

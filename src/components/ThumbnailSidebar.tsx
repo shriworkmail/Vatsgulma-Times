@@ -60,7 +60,7 @@ export function ThumbnailSidebar({
         </div>
 
         {/* Thumbnails Scrollable List with generous left-side space, tight item spacing and clean space when the last page ends */}
-        <div className="flex-1 overflow-y-auto pl-3.5 sm:pl-4 pr-2.5 py-2.5 space-y-2.5 bg-slate-50 custom-scrollbar pb-10 sm:pb-12">
+        <div className="flex-1 overflow-y-auto pl-4 sm:pl-5 pr-2.5 py-2.5 space-y-2.5 bg-slate-50 custom-scrollbar pb-10 sm:pb-12">
           {pages.map((page) => {
             const isActive = page.pageNumber === currentPage;
 

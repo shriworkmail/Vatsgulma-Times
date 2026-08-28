@@ -145,6 +145,29 @@ export default function App() {
     }
   };
 
+  // Change Paper / Edition Navigation
+  const currentEditionIndex = editions.findIndex((e) => e.date === selectedDate);
+  const hasPrevEdition = currentEditionIndex > -1 && currentEditionIndex < editions.length - 1;
+  const hasNextEdition = currentEditionIndex > 0;
+
+  const handlePrevEdition = () => {
+    if (hasPrevEdition) {
+      const olderEdition = editions[currentEditionIndex + 1];
+      setSelectedDate(olderEdition.date);
+      setCurrentEdition(olderEdition);
+      setCurrentPage(1);
+    }
+  };
+
+  const handleNextEdition = () => {
+    if (hasNextEdition) {
+      const newerEdition = editions[currentEditionIndex - 1];
+      setSelectedDate(newerEdition.date);
+      setCurrentEdition(newerEdition);
+      setCurrentPage(1);
+    }
+  };
+
   // Zoom controls
   const handleZoomIn = () => setZoom((prev) => Math.min(3.0, +(prev + 0.15).toFixed(2)));
   const handleZoomOut = () => setZoom((prev) => Math.max(0.4, +(prev - 0.15).toFixed(2)));
@@ -282,6 +305,10 @@ export default function App() {
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           isSidebarOpen={isSidebarOpen}
           onToggleFullscreen={handleToggleFullscreen}
+          onPrevEdition={handlePrevEdition}
+          onNextEdition={handleNextEdition}
+          hasPrevEdition={hasPrevEdition}
+          hasNextEdition={hasNextEdition}
         />
 
         {/* 4. Fit-to-screen Workspace: Left Thumbnails Sidebar + PDF Viewer */}
